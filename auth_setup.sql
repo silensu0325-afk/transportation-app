@@ -26,7 +26,7 @@ DROP POLICY IF EXISTS "Users can update/delete own expenses" ON public.transport
 CREATE POLICY "Users can see own expenses" ON public.transportation_expenses
   FOR SELECT USING (
     auth.uid() = user_id OR 
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND (role = 'admin' OR role = '管理者'))
   );
 
 -- ポリシー：自分のデータのみ挿入可能
@@ -37,7 +37,7 @@ CREATE POLICY "Users can insert own expenses" ON public.transportation_expenses
 CREATE POLICY "Users can update/delete own expenses" ON public.transportation_expenses
   FOR ALL USING (
     auth.uid() = user_id OR 
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND (role = 'admin' OR role = '管理者'))
   );
 
 -- 3. サインアップ時に自動でプロフィールを作成するトリガー
