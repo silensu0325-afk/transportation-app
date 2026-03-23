@@ -96,21 +96,32 @@ export function TransportationExpenses({ user }: { user: any }) {
 
   // ... (original functions: calculateDistance, fetchExpenses, handleSubmit, deleteExpense, handleLogout, exportToExcel)
   // ... (keep all the logic)
-  const calculateDistance = (src: string, dest: string) => {
+  const calculateDistance = async (src: string, dest: string) => {
     if (!window.google) return;
     setCalculating(true);
-    const service = new window.google.maps.DistanceMatrixService();
-    service.getDistanceMatrix({ origins: [src], destinations: [dest], travelMode: window.google.maps.TravelMode.DRIVING }, (response, status) => {
-      setCalculating(false);
-      if (status === 'OK' && response) {
-        const element = response.rows[0]?.elements[0];
-        if (element?.status === 'OK' && element.distance) {
-          const km = Math.round(element.distance.value / 100) / 10;
-          setDistance(km);
-          setRoute(`${element.distance.text} / ${element.duration?.text || ''}`);
+    try {
+      const { DistanceMatrixService, TravelMode } = window.google.maps;
+      const service = new DistanceMatrixService();
+      service.getDistanceMatrix(
+        { origins: [src], destinations: [dest], travelMode: TravelMode.DRIVING },
+        (response: any, status: any) => {
+          setCalculating(false);
+          if (status === 'OK' && response) {
+            const element = response.rows[0]?.elements[0];
+            if (element?.status === 'OK' && element.distance) {
+              const km = Math.round(element.distance.value / 100) / 10;
+              setDistance(km);
+              setAmount(Math.round(km * (isRoundTrip ? 2 : 1) * 15));
+              setRoute(\`\${element.distance.text} / \${element.duration?.text || ''}\`);
+            }
+          } else {
+            setCalculating(false);
+          }
         }
-      }
-    });
+      );
+    } catch (e) {
+      setCalculating(false);
+    }
   };
   const handleCalcDistance = () => { if (originAddress && destinationAddress) calculateDistance(originAddress, destinationAddress); };
   const fetchExpenses = async () => {
