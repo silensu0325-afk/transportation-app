@@ -42,18 +42,18 @@ export function TransportationExpenses({ user }: { user: any }) {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
-  // (Existing states remain same)
+  // Form states
   const [personName, setPersonName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [origin, setOrigin] = useState('事業所');
-  // ... (rest of the state)
   const [originAddress, setOriginAddress] = useState(BASE_ADDRESS);
   const [destination, setDestination] = useState('');
   const [destinationAddress, setDestinationAddress] = useState('');
   const [route, setRoute] = useState('');
   const [distance, setDistance] = useState<number>(0);
   const [isRoundTrip, setIsRoundTrip] = useState(false);
-  const [amount, setAmount] = useState(0);
+
+  // amountのStateを削除し、下部で自動計算するように変更しています
 
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState('');
@@ -78,7 +78,7 @@ export function TransportationExpenses({ user }: { user: any }) {
       }
     };
     fetchProfile();
-  }, [user.id]);
+  }, [user.id, personName]);
 
   useEffect(() => {
     if (isAdmin && activeTab === 'users') fetchAllUsers();
@@ -94,8 +94,6 @@ export function TransportationExpenses({ user }: { user: any }) {
     fetchAllUsers();
   };
 
-  // ... (original functions: calculateDistance, fetchExpenses, handleSubmit, deleteExpense, handleLogout, exportToExcel)
-  // ... (keep all the logic)
   const calculateDistance = async (src: string, dest: string) => {
     if (!window.google) return;
     setCalculating(true);
@@ -111,8 +109,8 @@ export function TransportationExpenses({ user }: { user: any }) {
             if (element?.status === 'OK' && element.distance) {
               const km = Math.round(element.distance.value / 100) / 10;
               setDistance(km);
-              setAmount(Math.round(km * (isRoundTrip ? 2 : 1) * 15));
-              setRoute(\`\${element.distance.text} / \${element.duration?.text || ''}\`);
+              // ここにあった setAmount は不要になったため削除しました
+              setRoute(`${element.distance.text} / ${element.duration?.text || ''}`);
             }
           } else {
             setCalculating(false);
@@ -123,7 +121,9 @@ export function TransportationExpenses({ user }: { user: any }) {
       setCalculating(false);
     }
   };
+
   const handleCalcDistance = () => { if (originAddress && destinationAddress) calculateDistance(originAddress, destinationAddress); };
+
   const fetchExpenses = async () => {
     setLoading(true);
     const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).toISOString();
@@ -134,15 +134,21 @@ export function TransportationExpenses({ user }: { user: any }) {
     if (!error && data) setExpenses(data as ExpenseRecord[]);
     setLoading(false);
   };
+
+  // 保存処理の際も、自動計算された新しい amount が使われます
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); if (!personName || !destination || amount <= 0) return;
+    e.preventDefault(); 
+    if (!personName || !destination || amount <= 0) return;
     setSaving(true);
     const { error } = await supabase.from('transportation_expenses').insert([{ user_id: user.id, person_name: personName, date, destination: `${origin} 〜 ${destination}`, route, distance, is_round_trip: isRoundTrip, amount }]);
     if (!error) { setDestination(''); setDistance(0); setIsRoundTrip(false); fetchExpenses(); alert('保存しました！'); }
     setSaving(false);
   };
+
   const deleteExpense = async (id: string) => { if (!window.confirm('この記録を削除しますか？')) return; const { error } = await supabase.from('transportation_expenses').delete().eq('id', id); if (!error) fetchExpenses(); };
+  
   const handleLogout = async () => { await supabase.auth.signOut(); };
+  
   const exportToExcel = async () => {
     if (expenses.length === 0) return alert('データがありません');
     const workbook = new ExcelJS.Workbook();
@@ -191,6 +197,9 @@ export function TransportationExpenses({ user }: { user: any }) {
     }
   }, [originAddress]);
 
+  // ★ここで常に最新の distance と isRoundTrip に基づいて amount を自動計算します
+  const amount = Math.round(distance * (isRoundTrip ? 2 : 1) * 20);
+  
   const totalAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   return (
@@ -222,7 +231,7 @@ export function TransportationExpenses({ user }: { user: any }) {
         <div className="bg-white rounded-[2rem] shadow-xl p-8 border border-indigo-50 space-y-6">
            <h3 className="text-xl font-black text-gray-900 mb-4">アカウント承認待ち</h3>
            <div className="divide-y divide-gray-100">
-              {allUsers.length === 0 ? <p className="p-8 text-center text-gray-400 font-bold">ユーザーがいません</p> :
+              {allUsers.length === 0 ? <p className="p-8 text-center text-gray-400 font-bold">ユーザーがいません</p> : 
                allUsers.map((u) => (
                 <div key={u.id} className="py-4 flex items-center justify-between">
                   <div>
@@ -277,7 +286,6 @@ export function TransportationExpenses({ user }: { user: any }) {
             </form>
           </div>
           <div className="space-y-4">
-            {/* List implementation remains similar but wrapped in conditional */}
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                   <h3 className="font-black text-gray-900 flex items-center gap-2"><History className="h-5 w-5 text-gray-400" /> {isAdmin ? '全職員の記録' : '自分の記録'}</h3>
