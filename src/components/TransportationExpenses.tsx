@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
-  Train, 
-  Download, 
-  Trash2, 
-  MapPin, 
-  Navigation, 
-  History, 
-  LogOut, 
-  Shield, 
-  Plus, 
-  Calendar, 
-  Loader2,
-  ChevronLeft,
-  ChevronRight
+  Train, Download, Trash2, MapPin, Navigation, History, 
+  LogOut, Shield, Plus, Loader2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -34,15 +23,11 @@ interface ExpenseRecord {
 }
 
 export function TransportationExpenses({ user }: { user: any }) {
-  // Tabs: 'expenses' | 'users'
   const [activeTab, setActiveTab] = useState<'expenses' | 'users'>('expenses');
-
-  // Auth & Profile state
   const [isAdmin, setIsAdmin] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
-  // Form states
   const [personName, setPersonName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [origin, setOrigin] = useState('事業所');
@@ -53,10 +38,7 @@ export function TransportationExpenses({ user }: { user: any }) {
   const [distance, setDistance] = useState<number>(0);
   const [isRoundTrip, setIsRoundTrip] = useState(false);
 
-  // amountのStateを削除し、下部で自動計算するように変更しています
-
   const [calculating, setCalculating] = useState(false);
-  const [calcError, setCalcError] = useState('');
   const originInputRef = useRef<HTMLInputElement>(null);
   const destinationInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,7 +91,6 @@ export function TransportationExpenses({ user }: { user: any }) {
             if (element?.status === 'OK' && element.distance) {
               const km = Math.round(element.distance.value / 100) / 10;
               setDistance(km);
-              // ここにあった setAmount は不要になったため削除しました
               setRoute(`${element.distance.text} / ${element.duration?.text || ''}`);
             }
           } else {
@@ -135,7 +116,9 @@ export function TransportationExpenses({ user }: { user: any }) {
     setLoading(false);
   };
 
-  // 保存処理の際も、自動計算された新しい amount が使われます
+  // ★ 1キロ20円の自動計算
+  const amount = Math.round(distance * (isRoundTrip ? 2 : 1) * 20);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
     if (!personName || !destination || amount <= 0) return;
@@ -149,34 +132,160 @@ export function TransportationExpenses({ user }: { user: any }) {
   
   const handleLogout = async () => { await supabase.auth.signOut(); };
   
+  // ★ Excel出力機能（画像デザイン＆月末シート対応版）
   const exportToExcel = async () => {
     if (expenses.length === 0) return alert('データがありません');
     const workbook = new ExcelJS.Workbook();
     const thinBorder: Partial<ExcelJS.Borders> = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-    const groupedByDay = expenses.reduce((acc, exp) => { const d = new Date(exp.date).getDate().toString(); if (!acc[d]) acc[d] = []; acc[d].push(exp); return acc; }, {} as Record<string, ExpenseRecord[]>);
-    Object.entries(groupedByDay).forEach(([day, dayExpenses]) => {
-      const sheet = workbook.addWorksheet(day);
-      sheet.columns = [{ width: 3 }, { width: 10 }, { width: 18 }, { width: 10 }, { width: 25 }, { width: 10 }, { width: 12 }, { width: 12 }, { width: 8 }, { width: 10 }, { width: 10 }, { width: 10 }];
-      sheet.mergeCells('B1:L2'); const title = sheet.getCell('B1'); title.value = '交通費精算書'; title.font = { size: 24, bold: true, color: { argb: 'FFFFFFFF' } }; title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }; title.alignment = { horizontal: 'center', vertical: 'middle' };
-      sheet.getCell('B4').value = '氏名'; sheet.mergeCells('C4:E4'); sheet.getCell('C4').value = dayExpenses[0].person_name;
+    
+    const generateSheet = (sheetName: string, targetExpenses: ExpenseRecord[]) => {
+      const sheet = workbook.addWorksheet(sheetName);
+      
+      sheet.columns = [
+        { width: 3 }, { width: 12 }, { width: 15 }, { width: 15 }, 
+        { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, 
+        { width: 8 }, { width: 8 }, { width: 8 }, { width: 12 }
+      ];
+      
+      sheet.mergeCells('B1:L2'); 
+      const title = sheet.getCell('B1'); 
+      title.value = '交通費精算書'; 
+      title.font = { size: 20, bold: true, color: { argb: 'FFFFFFFF' } }; 
+      title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }; 
+      title.alignment = { horizontal: 'center', vertical: 'middle' };
+      
+      sheet.getCell('B3').value = '社員番号';
+      sheet.getCell('B3').border = thinBorder;
+      sheet.mergeCells('C3:E3');
+      sheet.getCell('C3').border = thinBorder;
+      
+      sheet.getCell('K3').value = 'No :';
+      sheet.getCell('K3').alignment = { horizontal: 'right' };
+      sheet.getCell('L3').value = sheetName === '交通費精算書（月末）' ? '' : sheetName; 
+      sheet.getCell('L3').alignment = { horizontal: 'center' };
+      sheet.getCell('L3').border = { bottom: { style: 'thin' } };
+      
+      sheet.getCell('B4').value = '氏名';
+      sheet.getCell('B4').border = thinBorder;
+      sheet.mergeCells('C4:E4');
+      sheet.getCell('C4').value = targetExpenses[0]?.person_name || '';
+      sheet.getCell('C4').border = thinBorder;
+      sheet.getCell('C4').alignment = { horizontal: 'center' };
+      
+      sheet.getCell('K4').value = '申請日 :';
+      sheet.getCell('K4').alignment = { horizontal: 'right' };
+      sheet.getCell('L4').border = { bottom: { style: 'thin' } };
+      
+      sheet.getCell('B5').value = '所属';
+      sheet.getCell('B5').border = thinBorder;
+      sheet.mergeCells('C5:E5');
+      sheet.getCell('C5').value = 'BRAIN';
+      sheet.getCell('C5').border = thinBorder;
+      sheet.getCell('C5').alignment = { horizontal: 'center' };
+      
       const headerRow = 10;
-      [{ col: 'B', text: '日付' }, { col: 'C', text: '行先' }, { col: 'D', text: '路' }, { col: 'E', text: '区間' }, { col: 'I', text: '距離' }, { col: 'L', text: '金額' }].forEach(h => { const c = sheet.getCell(`${h.col}${headerRow}`); c.value = h.text; c.border = thinBorder; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
-      let rowIdx = 11; dayExpenses.forEach(exp => {
-        const tripCount = exp.is_round_trip ? 2 : 1; const [start, end] = exp.destination.split(' 〜 ');
+      sheet.mergeCells(`E${headerRow}:H${headerRow}`);
+      sheet.mergeCells(`I${headerRow}:K${headerRow}`);
+      
+      sheet.getCell(`B${headerRow}`).value = '日付';
+      sheet.getCell(`C${headerRow}`).value = '行先';
+      sheet.getCell(`D${headerRow}`).value = '利用路線';
+      sheet.getCell(`E${headerRow}`).value = '区間';
+      sheet.getCell(`I${headerRow}`).value = '片 / 往';
+      sheet.getCell(`L${headerRow}`).value = '金額';
+      
+      ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].forEach(c => {
+        const cell = sheet.getCell(`${c}${headerRow}`);
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+
+      let rowIdx = 11;
+      const MAX_ROWS = 14; 
+      let totalDistance = 0;
+      let totalAmount = 0;
+
+      targetExpenses.forEach(exp => {
+        const tripCount = exp.is_round_trip ? 2 : 1; 
+        const [start, end] = exp.destination.split(' 〜 ');
+        const oneWayAmount = Math.round(exp.distance * 20);
+
         for (let i = 0; i < tripCount; i++) {
-          const row = sheet.getRow(rowIdx); if (i === 0) { row.getCell('B').value = exp.date; row.getCell('C').value = end; }
-          sheet.mergeCells(`E${rowIdx}:H${rowIdx}`); row.getCell('E').value = i === 0 ? `${start} 〜 ${end}` : `${end} 〜 ${start}`;
-          sheet.mergeCells(`I${rowIdx}:K${rowIdx}`); row.getCell('I').value = exp.distance;
-          ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].forEach(c => row.getCell(c).border = thinBorder); rowIdx++;
+          const row = sheet.getRow(rowIdx); 
+          if (i === 0) { 
+            row.getCell('B').value = exp.date; 
+            row.getCell('C').value = end; 
+          }
+          
+          sheet.mergeCells(`E${rowIdx}:H${rowIdx}`); 
+          row.getCell('E').value = i === 0 ? `${start} 〜 ${end}` : `${end} 〜 ${start}`;
+          
+          sheet.mergeCells(`I${rowIdx}:K${rowIdx}`); 
+          row.getCell('I').value = exp.distance;
+          row.getCell('I').numFmt = '0.0';
+          
+          row.getCell('L').value = oneWayAmount;
+          row.getCell('L').numFmt = '#,##0';
+
+          totalDistance += exp.distance;
+          totalAmount += oneWayAmount;
+          
+          rowIdx++;
         }
       });
-    });
-    const buffer = await workbook.xlsx.writeBuffer(); saveAs(new Blob([buffer]), '交通費精算.xlsx');
-  };
+      
+      const targetLastRow = Math.max(rowIdx - 1, 10 + MAX_ROWS);
+      for (let r = 11; r <= targetLastRow; r++) {
+        const row = sheet.getRow(r);
+        if (!sheet.getCell(`E${r}`).isMerged) {
+            sheet.mergeCells(`E${r}:H${r}`);
+            sheet.mergeCells(`I${r}:K${r}`);
+        }
+        ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].forEach(c => {
+          row.getCell(c).border = thinBorder;
+          if (c === 'I' || c === 'L') {
+             row.getCell(c).alignment = { horizontal: 'right', vertical: 'middle' };
+          } else {
+             row.getCell(c).alignment = { vertical: 'middle' };
+          }
+        });
+      }
 
-  useEffect(() => {
-    fetchExpenses();
-  }, [currentMonth, isAdmin]);
+      const sumRowIdx = targetLastRow + 1;
+      const sumRow = sheet.getRow(sumRowIdx);
+      
+      sheet.mergeCells(`I${sumRowIdx}:K${sumRowIdx}`);
+      const sumDistCell = sumRow.getCell('I');
+      sumDistCell.value = totalDistance;
+      sumDistCell.numFmt = '0.0';
+      sumDistCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      
+      const sumAmountCell = sumRow.getCell('L');
+      sumAmountCell.value = totalAmount;
+      sumAmountCell.numFmt = '#,##0';
+      sumAmountCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      
+      ['I', 'J', 'K', 'L'].forEach(c => { 
+        sumRow.getCell(c).border = thinBorder; 
+      });
+    };
+
+    const groupedByDay = expenses.reduce((acc, exp) => { 
+      const d = new Date(exp.date).getDate().toString(); 
+      if (!acc[d]) acc[d] = []; 
+      acc[d].push(exp); 
+      return acc; 
+    }, {} as Record<string, ExpenseRecord[]>);
+
+    Object.entries(groupedByDay).forEach(([day, dayExpenses]) => {
+      generateSheet(day, dayExpenses);
+    });
+
+    generateSheet('交通費精算書（月末）', expenses);
+
+    const buffer = await workbook.xlsx.writeBuffer(); 
+    saveAs(new Blob([buffer]), '交通費精算.xlsx');
+  };
 
   useEffect(() => {
     if (window.google) {
@@ -197,9 +306,6 @@ export function TransportationExpenses({ user }: { user: any }) {
     }
   }, [originAddress]);
 
-  // ★ここで常に最新の distance と isRoundTrip に基づいて amount を自動計算します
-  const amount = Math.round(distance * (isRoundTrip ? 2 : 1) * 20);
-  
   const totalAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   return (
