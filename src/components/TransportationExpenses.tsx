@@ -115,7 +115,13 @@ export function TransportationExpenses({ user }: { user: any }) {
     if (!error && data) setExpenses(data as ExpenseRecord[]);
     setLoading(false);
   };
-
+// 🌟🌟🌟 ここから下を丸ごと追加してください！ 🌟🌟🌟
+  useEffect(() => {
+    if (user && user.id) {
+      fetchExpenses();
+    }
+  }, [user, isAdmin, currentMonth]); // userや月が変わるたびに自動で再取得します
+  // 🌟🌟🌟 ここまで 🌟🌟🌟
   // ★ 1キロ20円の自動計算
   const amount = Math.round(distance * (isRoundTrip ? 2 : 1) * 20);
 
