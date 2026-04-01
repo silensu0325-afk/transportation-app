@@ -47,20 +47,24 @@ export function TransportationExpenses({ user }: { user: any }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // ★修正箇所1：staffadminの判定追加と、不要な再レンダリング防止
   useEffect(() => {
     const fetchProfile = async () => {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       if (!error && data) {
         setUserProfile(data);
-        const isAdminUser = data.role === 'admin' || data.role === '管理者' || user.email === 'silensu0325@gmail.com';
+        // DB上のロール 'staffadmin' を条件に追加しました
+        const isAdminUser = data.role === 'admin' || data.role === 'staffadmin' || data.role === '管理者' || user.email === 'silensu0325@gmail.com';
         setIsAdmin(isAdminUser);
         if (!personName) setPersonName(data.email?.split('@')[0] || '');
-      } else if (user.email === 'silensu0325@gmail.com') {
-        setIsAdmin(true);
+      } else {
+        if (user.email === 'silensu0325@gmail.com') setIsAdmin(true);
+        // プロフィールが無い場合でも処理が止まらないようにダミーを入れる
+        setUserProfile({ loaded: true }); 
       }
     };
     fetchProfile();
-  }, [user.id, personName]);
+  }, [user.id]); // personNameを外して無限ループを防止
 
   useEffect(() => {
     if (isAdmin && activeTab === 'users') fetchAllUsers();
@@ -115,14 +119,14 @@ export function TransportationExpenses({ user }: { user: any }) {
     if (!error && data) setExpenses(data as ExpenseRecord[]);
     setLoading(false);
   };
-// 🌟🌟🌟 ここから下を丸ごと追加してください！ 🌟🌟🌟
+
+  // ★修正箇所2：プロフィールの読み込み（管理者かどうかの判定）が終わってからデータを取得する
   useEffect(() => {
-    if (user && user.id) {
+    if (user && user.id && userProfile !== null) {
       fetchExpenses();
     }
-  }, [user, isAdmin, currentMonth]); // userや月が変わるたびに自動で再取得します
-  // 🌟🌟🌟 ここまで 🌟🌟🌟
-  // ★ 1キロ20円の自動計算
+  }, [user, isAdmin, currentMonth, userProfile]);
+
   const amount = Math.round(distance * (isRoundTrip ? 2 : 1) * 20);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,7 +142,6 @@ export function TransportationExpenses({ user }: { user: any }) {
   
   const handleLogout = async () => { await supabase.auth.signOut(); };
   
-  // ★ Excel出力機能（画像デザイン＆月末シート対応版）
   const exportToExcel = async () => {
     if (expenses.length === 0) return alert('データがありません');
     const workbook = new ExcelJS.Workbook();
